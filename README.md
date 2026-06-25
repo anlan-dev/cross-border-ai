@@ -1,6 +1,10 @@
-# GlobalFUN Multi-Agent System
+# GlobalFUN — Cross-Border E-Commerce Multi-Agent System
 
-LangGraph + MCP Protocol 驱动的跨境电商多 Agent 系统。
+A LangGraph + MCP Protocol powered multi-agent system for cross-border e-commerce operations.
+
+## Overview
+
+GlobalFUN is an AI-powered platform that automates the full lifecycle of cross-border e-commerce — from demand analysis and market research to product selection, content generation, compliance checking, and operations strategy. Unlike traditional chatbots, it uses a **6-agent collaboration architecture** with structured card-based output.
 
 ## Architecture
 
@@ -9,19 +13,24 @@ User Query
     │
     ▼
 ┌─────────────┐
-│ Intent Parser│  ← 意图识别 + 实体提取
+│ Intent Parser│  ← Intent classification + Entity extraction
 └──────┬──────┘
        │  Conditional Routing
        ▼
 ┌──────────────────────────────────────┐
 │  ┌──────────┐ ┌──────────┐ ┌───────┐ │
-│  │ Market   │ │ Product  │ │Compli-│ │  ← 并行执行
+│  │ Market   │ │ Product  │ │Compli-│ │  ← Parallel execution
 │  │ Analyst  │ │ Scout    │ │ance   │ │
 │  └────┬─────┘ └────┬─────┘ └───┬───┘ │
 │       └─────────────┼───────────┘     │
 │                     ▼                 │
+│  ┌──────────┐ ┌──────────┐           │
+│  │Copywriter│ │ Strategy │           │  ← Content & Strategy
+│  └────┬─────┘ └────┬─────┘           │
+│       └─────────────┼───────────┘     │
+│                     ▼                 │
 │              ┌────────────┐           │
-│              │  Compiler  │           │  ← 汇总输出
+│              │  Compiler  │           │  ← Structured output
 │              └────────────┘           │
 └──────────────────────────────────────┘
 ```
@@ -30,23 +39,23 @@ User Query
 
 | Agent | Role | Icon | Tools Used |
 |-------|------|------|------------|
-| Intent Parser | 意图识别 | 🔍 | LLM + keyword fallback |
-| Market Analyst | 市场调研 | 📊 | product_search, currency |
-| Product Scout | 选品分析 | 🛍️ | price_compare, review_analyze |
-| Compliance | 合规审核 | 🛡️ | compliance_check |
-| Copywriter | 文案生成 | ✍️ | LLM generation |
-| Strategy | 运营策略 | 📈 | LLM + market data |
+| Intent Parser | Intent Recognition | 🔍 | LLM + keyword fallback |
+| Market Analyst | Market Research | 📊 | product_search, currency |
+| Product Scout | Product Selection | 🛍️ | price_compare, review_analyze |
+| Compliance | Regulatory Check | 🛡️ | compliance_check |
+| Copywriter | Content Generation | ✍️ | LLM generation |
+| Strategy | Operations Strategy | 📈 | LLM + market data |
 
 ## MCP Tools
 
 | Tool | Description |
 |------|-------------|
-| `price_compare` | 多平台比价 |
-| `product_search` | 商品搜索 |
-| `logistics` | 物流 & 关税查询 |
-| `compliance_check` | 合规校验 |
-| `currency` | 实时汇率 |
-| `review_analyze` | 评价分析 |
+| `price_compare` | Multi-platform price comparison |
+| `product_search` | Product search & discovery |
+| `logistics` | Logistics & tariff calculation |
+| `compliance_check` | Regulatory compliance verification |
+| `currency` | Real-time currency conversion |
+| `review_analyze` | Product review analysis |
 
 ## Quick Start
 
@@ -60,7 +69,7 @@ cp .env.example .env
 
 # 3. Run CLI demo
 python examples/run_demo.py
-python examples/run_demo.py "帮我比价SK-II神仙水"
+python examples/run_demo.py "Compare SK-II prices across platforms"
 
 # 4. Run tests
 python -m pytest tests/ -v
@@ -110,6 +119,16 @@ cross-border-ai-agent/
 3. **Keyword fallback** — Intent parsing has a keyword-based fallback when LLM is unavailable, ensuring the system works offline.
 
 4. **Structured state** — `PipelineState` TypedDict provides type safety and clear data flow between agents.
+
+5. **Structured card output** — Results are delivered as structured cards (price comparison, compliance report, copywriting, strategy) rather than plain text.
+
+## Tech Stack
+
+- **LangGraph** — Multi-agent orchestration
+- **MCP Protocol** — Tool abstraction layer
+- **Python 3.11+** — Runtime
+- **FastAPI** — API server
+- **React + TypeScript** — Frontend UI
 
 ## License
 
