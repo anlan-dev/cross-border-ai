@@ -1,223 +1,118 @@
-"""LangGraph workflow definition.
-
-This module builds the StateGraph that orchestrates all agents.
-The pipeline follows this pattern:
-
-    User Query
-        │
-        ▼
-    Intent Parser  ──── classify intent + extract entities
-        │
-        ▼
-    Router  ──── select which agents to activate
-        │
-        ├──► Market Analyst (parallel)
-        ├──► Product Scout  (parallel)
-        ├──► Compliance     (parallel)
-        │
-        ▼
-    Copywriter / Strategy  (depends on intent)
-        │
-        ▼
-    Output Compiler  ──── assemble final response
-"""
+"""LangGraph workflow v2 — true parallel agents + MCP + error recovery + decision chains."""
 
 from __future__ import annotations
-
 import time
-from typing import Any, Literal
-
-from langgraph.graph import END, StateGraph
-
+from typing import Any
+from langgraph.graph import END, StateGraph, Send
 from src.graph.state import PipelineState
+from src.mcp.router import MCPRouter
 from src.agents.intent_parser import IntentParserAgent
-from src.agents.market_analyst import MarketAnalystAgent
-from src.agents.product_scout import ProductScoutAgent
-from src.agents.compliance import ComplianceAgent
-from src.agents.copywriter import CopywriterAgent
-from src.agents.strategy import StrategyAgent
+from src.data.scenarios import ScenarioStore
 
-# ── Agent instances ──────────────────────────────────────
+mcp_router = MCPRouter()
 intent_parser = IntentParserAgent()
-market_analyst = MarketAnalystAgent()
-product_scout = ProductScoutAgent()
-compliance_agent = ComplianceAgent()
-copywriter = CopywriterAgent()
-strategy_agent = StrategyAgent()
+_agent_cache = {}
 
-# ── Intent → Agent routing map ───────────────────────────
-# Each intent maps to a set of downstream agents.
-INTENT_ROUTES: dict[str, list[str]] = {
-    "price_compare":  ["market_analyst", "product_scout"],
+def _get_agent(name: str):
+    if name not in _agent_cache:
+        if name == "market_analyst":
+            from src.agents.market_analyst import MarketAnalystAgent
+            _agent_cache[name] = MarketAnalystAgent(mcp=mcp_router)
+        elif name == "product_scout":
+            from src.agents.product_scout import ProductScoutAgent
+            _agent_cache[name] = ProductScoutAgent(mcp=mcp_router)
+        elif name == "compliance":
+            from src.agents.compliance import ComplianceAgent
+            _agent_cache[name] = ComplianceAgent(mcp=mcp_router)
+        elif name == "copywriter":
+            from src.agents.copywriter import CopywriterAgent
+            _agent_cache[name] = CopywriterAgent()
+        elif name == "strategy":
+            from src.agents.strategy import StrategyAgent
+            _agent_cache[name] = StrategyAgent()
+    return _agent_cache[name]
+
+INTENT_ROUTES = {
+    "price_compare": ["market_analyst", "product_scout"],
     "product_search": ["market_analyst", "product_scout"],
-    "logistics":      ["market_analyst", "compliance"],
-    "compliance":     ["compliance"],
-    "review_analysis":["product_scout"],
-    "copywriting":    ["product_scout", "copywriter"],
-    "strategy":       ["market_analyst", "product_scout", "compliance", "strategy"],
-    "currency":       ["market_analyst"],
+    "logistics": ["market_analyst", "compliance"],
+    "compliance": ["compliance"],
+    "review_analysis": ["product_scout"],
+    "copywriting": ["product_scout", "copywriter"],
+    "strategy": ["market_analyst", "product_scout", "compliance", "strategy"],
+    "currency": ["market_analyst"],
 }
 
+async def _run_agent_safe(agent_name: str, state: dict) -> dict:
+    try:
+        agent = _get_agent(agent_name)
+        return await agent.run(state)
+    except Exception as e:
+        trace_entry = {"agent": agent_name, "latency_ms": 0, "status": "error", "error": str(e)}
+        trace = state.get("agent_trace", []) + [trace_entry]
+        return {"agent_trace": trace, "agent_errors": state.get("agent_errors", []) + [trace_entry]}
 
-# ── Node functions ──────────────────────────────────────
-
-async def node_intent_parser(state: PipelineState) -> dict[str, Any]:
-    """Parse user intent."""
-    return await intent_parser.run(state)
-
-
-async def node_market_analyst(state: PipelineState) -> dict[str, Any]:
-    """Run market analysis."""
-    return await market_analyst.run(state)
-
-
-async def node_product_scout(state: PipelineState) -> dict[str, Any]:
-    """Search and evaluate products."""
-    return await product_scout.run(state)
-
-
-async def node_compliance(state: PipelineState) -> dict[str, Any]:
-    """Run compliance checks."""
-    return await compliance_agent.run(state)
-
-
-async def node_copywriter(state: PipelineState) -> dict[str, Any]:
-    """Generate marketing copy."""
-    return await copywriter.run(state)
-
-
-async def node_strategy(state: PipelineState) -> dict[str, Any]:
-    """Generate strategy recommendations."""
-    return await strategy_agent.run(state)
-
+async def node_intent_parser(state): return await intent_parser.run(state)
+async def node_market_analyst(state): return await _run_agent_safe("market_analyst", state)
+async def node_product_scout(state): return await _run_agent_safe("product_scout", state)
+async def node_compliance(state): return await _run_agent_safe("compliance", state)
+async def node_copywriter(state): return await _run_agent_safe("copywriter", state)
+async def node_strategy(state): return await _run_agent_safe("strategy", state)
 
 async def node_compiler(state: PipelineState) -> dict[str, Any]:
-    """Compile all agent results into a structured output."""
     cards = []
+    def _add_card(ct, title, sk):
+        d = state.get(sk, {})
+        if d and d.get("status") != "error":
+            cards.append({"type": ct, "title": title, "data": d.get("data", {}), "decision": d.get("decision", "")})
 
-    # Price comparison card
-    price_data = state.get("price_comparison", {})
-    if price_data:
-        cards.append({
-            "type": "price_compare",
-            "title": "多平台比价",
-            "data": price_data.get("data", {}),
-        })
+    _add_card("price_compare", "多平台比价", "price_comparison")
+    _add_card("product_analysis", "选品分析", "product_analysis")
+    _add_card("compliance", "合规审核", "compliance_report")
+    _add_card("copywriting", "AI 文案", "copywriting_output")
+    _add_card("strategy", "运营策略", "strategy_output")
 
-    # Product analysis card
-    product_data = state.get("product_analysis", {})
-    if product_data:
-        cards.append({
-            "type": "product_analysis",
-            "title": "选品分析",
-            "data": product_data.get("data", {}),
-        })
+    scenario = ScenarioStore.find(state.get("query", ""))
+    decision_summary = ""
+    if scenario and "decision_chain" in scenario:
+        dc = scenario["decision_chain"]
+        decision_summary = f"比价: {dc.get('price', '')} | 关税: {dc.get('tariff', '')} | 合规: {dc.get('compliance', '')}"
+        cards.append({"type": "decision_chain", "title": "PM 决策链", "data": {"steps": [
+            {"label": "比价", "detail": dc.get("price", "")},
+            {"label": "关税", "detail": dc.get("tariff", "")},
+            {"label": "合规", "detail": dc.get("compliance", "")},
+            {"label": "综合建议", "detail": dc.get("recommendation", "")},
+        ]}})
 
-    # Compliance card
-    compliance_data = state.get("compliance_report", {})
-    if compliance_data:
-        cards.append({
-            "type": "compliance",
-            "title": "合规审核",
-            "data": compliance_data.get("data", {}),
-        })
-
-    # Copywriting card
-    copy_data = state.get("copywriting_output", {})
-    if copy_data:
-        cards.append({
-            "type": "copywriting",
-            "title": "AI 文案",
-            "data": copy_data.get("data", {}),
-        })
-
-    # Strategy card
-    strategy_data = state.get("strategy_output", {})
-    if strategy_data:
-        cards.append({
-            "type": "strategy",
-            "title": "运营策略",
-            "data": strategy_data.get("data", {}),
-        })
-
-    # Compute totals
     trace = state.get("agent_trace", [])
+    errors = state.get("agent_errors", [])
     total_latency = sum(t.get("latency_ms", 0) for t in trace)
-    total_tokens = sum(
-        state.get(k, {}).get("tokens_used", 0)
-        for k in ["market_analysis", "product_analysis", "compliance_report",
-                   "copywriting_output", "strategy_output"]
-    )
+    total_tokens = sum(state.get(k, {}).get("tokens_used", 0) for k in [
+        "market_analysis", "product_analysis", "compliance_report", "copywriting_output", "strategy_output"])
+    status = "partial" if errors else "success"
+    return {"response_cards": cards,
+            "summary": decision_summary or f"Pipeline {status}: {len(cards)} cards, {len(trace)} agents, {len(errors)} errors.",
+            "total_latency_ms": total_latency, "total_tokens": total_tokens}
 
-    return {
-        "response_cards": cards,
-        "summary": f"Pipeline completed: {len(cards)} cards generated, {len(trace)} agents executed.",
-        "total_latency_ms": total_latency,
-        "total_tokens": total_tokens,
-    }
-
-
-# ── Router function ─────────────────────────────────────
-
-def route_after_intent(state: PipelineState) -> list[str]:
-    """Determine which agents to activate based on parsed intent."""
+def route_after_intent(state: PipelineState):
     intent = state.get("intent", "product_search")
     targets = INTENT_ROUTES.get(intent, ["market_analyst", "product_scout"])
-
-    # Always add compiler at the end
-    return targets + ["compiler"]
-
-
-# ── Graph construction ──────────────────────────────────
+    return [Send(target, state) for target in targets]
 
 def build_graph() -> StateGraph:
-    """Build and return the LangGraph StateGraph.
-
-    The graph supports conditional routing: after intent parsing,
-    only the relevant agents are activated (not all 6).
-    """
     graph = StateGraph(PipelineState)
-
-    # Add all nodes
-    graph.add_node("intent_parser", node_intent_parser)
-    graph.add_node("market_analyst", node_market_analyst)
-    graph.add_node("product_scout", node_product_scout)
-    graph.add_node("compliance", node_compliance)
-    graph.add_node("copywriter", node_copywriter)
-    graph.add_node("strategy", node_strategy)
-    graph.add_node("compiler", node_compiler)
-
-    # Entry point
+    nodes = {"intent_parser": node_intent_parser, "market_analyst": node_market_analyst,
+             "product_scout": node_product_scout, "compliance": node_compliance,
+             "copywriter": node_copywriter, "strategy": node_strategy, "compiler": node_compiler}
+    for name, fn in nodes.items():
+        graph.add_node(name, fn)
     graph.set_entry_point("intent_parser")
-
-    # Conditional routing after intent parsing
-    graph.add_conditional_edges(
-        "intent_parser",
-        route_after_intent,
-        {
-            "market_analyst": "market_analyst",
-            "product_scout": "product_scout",
-            "compliance": "compliance",
-            "copywriter": "copywriter",
-            "strategy": "strategy",
-            "compiler": "compiler",
-        },
-    )
-
-    # All active agents feed into compiler
-    for agent_name in ["market_analyst", "product_scout", "compliance",
-                       "copywriter", "strategy"]:
-        graph.add_edge(agent_name, "compiler")
-
-    # Compiler is the end
+    graph.add_conditional_edges("intent_parser", route_after_intent,
+        {t: t for t in ["market_analyst", "product_scout", "compliance", "copywriter", "strategy"]})
+    for name in ["market_analyst", "product_scout", "compliance", "copywriter", "strategy"]:
+        graph.add_edge(name, "compiler")
     graph.add_edge("compiler", END)
-
     return graph
 
-
-# ── Public API ──────────────────────────────────────────
-
 def create_app():
-    """Create a compiled LangGraph app ready for invocation."""
-    graph = build_graph()
-    return graph.compile()
+    return build_graph().compile()
