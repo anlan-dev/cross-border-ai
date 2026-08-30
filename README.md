@@ -132,4 +132,6 @@ cross-border-ai-agent/
 
 ## License
 
-MIT
+GNU General Public License v3.0（保留作者署名权）
+
+见 [LICENSE](./LICENSE)。
