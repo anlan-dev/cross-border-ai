@@ -1,5 +1,8 @@
 # GlobalFUN — Cross-Border E-Commerce Multi-Agent System
 
+> © 2026 王天娇（anlan-dev）· GPL-3.0 开源 · 使用时保留作者署名与版权声明 / keep attribution
+
+
 A LangGraph + MCP Protocol powered multi-agent system for cross-border e-commerce operations.
 
 ## Overview

@@ -1,3 +1,4 @@
+# (c)2026 WangTianJiao anlan-dev | GPL-3.0 | 保留作者署名 attribution required
 """LangGraph workflow v2 — true parallel agents + MCP + error recovery + decision chains."""
 
 from __future__ import annotations
