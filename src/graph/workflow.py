@@ -91,9 +91,25 @@ async def node_compiler(state: PipelineState) -> dict[str, Any]:
     total_tokens = sum(state.get(k, {}).get("tokens_used", 0) for k in [
         "market_analysis", "product_analysis", "compliance_report", "copywriting_output", "strategy_output"])
     status = "partial" if errors else "success"
+
+    # 结构化可观测性指标（供评测对比：延迟 / 错误 / LLM 命中率 / 每 Agent 明细）
+    llm_hits = sum(1 for t in trace if t.get("llm_status") == "llm")
+    metrics = {
+        "status": status,
+        "total_agents": len(trace),
+        "success_agents": len(trace) - len(errors),
+        "error_agents": len(errors),
+        "total_latency_ms": total_latency,
+        "total_tokens": total_tokens,
+        "llm_hit_count": llm_hits,
+        "llm_hit_rate": round(llm_hits / len(trace), 3) if trace else 0,
+        "per_agent_latency_ms": {t.get("agent"): t.get("latency_ms", 0) for t in trace},
+    }
+
     return {"response_cards": cards,
             "summary": decision_summary or f"Pipeline {status}: {len(cards)} cards, {len(trace)} agents, {len(errors)} errors.",
-            "total_latency_ms": total_latency, "total_tokens": total_tokens}
+            "total_latency_ms": total_latency, "total_tokens": total_tokens,
+            "metrics": metrics}
 
 def route_after_intent(state: PipelineState):
     intent = state.get("intent", "product_search")
