@@ -125,6 +125,33 @@ cross-border-ai-agent/
 
 5. **Structured card output** — Results are delivered as structured cards (price comparison, compliance report, copywriting, strategy) rather than plain text.
 
+## Known Limitations（2026-09 现状）
+
+**当前是架构 Demo，不是可上线系统。** 公开这一节是为了让能力边界可核对：
+
+| 部分 | 状态 |
+|---|---|
+| 意图路由 / 结构化输出解析 | **真实可复现**：`python tests/test_intent_utils.py`（明确 10/10、边界 4/4、JSON 容错 7/7；样本 14 条，自建集，非第三方基准） |
+| LangGraph DAG 编排 + MCP 工具路由 | 真实实现（`src/graph/`、`src/mcp/`） |
+| 商品 / 价格 / 评价 / 物流数据 | **模拟数据**：`price_compare.py`、`product_search.py` 用随机数与静态数组生成（文件内已标注 `Mock data`），`src/data/scenarios.py` 为 3 个固定场景 |
+| 多平台真实数据接入 | **未实现** |
+| 向量检索 | **未实现**（当前场景规模不需要，见下） |
+| 支付 / 结算、真实用户数据 | **未实现** |
+
+### 为什么不接真实平台数据
+
+「接入四个平台」是需求描述，不是方案。四条路径差异很大：**官方开放平台 API**（天猫/京东开放平台、Amazon SP-API）合规稳定，但价格类字段多数不对外开放、需商家资质；**第三方数据服务商采买**按调用量付费，海外覆盖弱；**联盟 / CPS 接口**合规但只覆盖联盟内商品；**爬虫**违反平台 ToS、反爬成本高，已划为红线。
+
+**取舍**：v1 不承诺接入四个平台，只接一个有官方授权的源把「到手价」算准，其余用可降级占位数据并明确标注。
+
+### 高频商品为什么不"全量重新向量化"
+
+价格/库存/销量是高频结构化字段，应走 KV + 精确查询；向量库只放低频语义字段（标题、卖点、类目、评论摘要），并用 `content_hash + updated_at` 做增量变更检测，hash 未变则复用旧向量。当前 Demo 只有 3 个固定场景，技术上用不着向量库，因此未引入。
+
+### 为什么没有 agent loop
+
+任务边界收敛（8 类意图、固定编排）时，DAG 更合适：可测、延迟可控、Token 成本可预算。只有开放式的多轮工具试错才需要 loop；loop 留作 v2 的显式开关，不做默认。
+
 ## Tech Stack
 
 - **LangGraph** — Multi-agent orchestration
