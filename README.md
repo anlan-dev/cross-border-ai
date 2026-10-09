@@ -81,11 +81,12 @@ python -m pytest tests/ -v
 ## Project Structure
 
 ```
-cross-border-ai-agent/
+cross-border-ai/
 ├── src/
 │   ├── config.py              # Global settings
 │   ├── agents/                # 6 specialized agents
 │   │   ├── intent_parser.py   # Intent classification
+│   │   ├── intent_utils.py    # Keyword fallback + evaluation set
 │   │   ├── market_analyst.py  # Market research
 │   │   ├── product_scout.py   # Product evaluation
 │   │   ├── copywriter.py      # Content generation
@@ -101,16 +102,28 @@ cross-border-ai-agent/
 │   ├── graph/                 # LangGraph workflow
 │   │   ├── state.py           # Shared state definition
 │   │   └── workflow.py        # Graph construction
-│   └── mcp/                   # MCP protocol layer
-│       ├── protocol.py        # Message types
-│       └── router.py          # Tool routing
+│   ├── mcp/                   # MCP protocol layer
+│   │   ├── protocol.py        # Message types
+│   │   └── router.py          # Tool routing
+│   └── data/
+│       └── scenarios.py       # 3 fixed demo scenarios
+├── api/                       # FastAPI server
+│   ├── server.py              # HTTP / WebSocket endpoints
+│   └── api_keys.py            # API key handling
+├── frontend/                  # React + TypeScript + Vite + Tailwind
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── components/        # Chat, cards, agent trace, MCP panel, ...
+│   │   └── hooks/useWebSocket.ts
+│   ├── package.json
+│   └── vite.config.ts
 ├── tests/
+│   ├── test_intent_utils.py   # Reproducible intent-routing eval set (14 cases)
 │   └── test_pipeline.py
 ├── examples/
 │   └── run_demo.py            # CLI demo
-└── demo/
-    └── work/
-        └── cross-border-ai.html  # Interactive web demo
+├── pyproject.toml
+└── requirements.txt
 ```
 
 ## Key Design Decisions
